@@ -3,16 +3,16 @@
 #include<unistd.h>
 namespace rocket
 {
-    WakeUpEvent::WakeUpEvent(int fd):FdEvent(fd)
+    WakeUpFdEvent::WakeUpFdEvent(int fd):FdEvent(fd)
     {
-        init();
+        
     }
-    WakeUpEvent::~WakeUpEvent()
+    WakeUpFdEvent::~WakeUpFdEvent()
     {
 
     }
   
-    void WakeUpEvent::wakeup()
+    void WakeUpFdEvent::wakeup()
     {
         char buf[8] = {'a'};
         int rt = write(m_fd,buf,8);
@@ -20,5 +20,6 @@ namespace rocket
         {
             ERRORLOG("write to wakeup fd less than 8 bytes,fd[%d]",m_fd);
         }
+        DEBUGLOG("success read 8 bytes");
     }
 }

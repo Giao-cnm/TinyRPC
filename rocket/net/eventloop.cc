@@ -7,6 +7,7 @@
 #include"rocket/common/config.h"
 #include"rocket/common/mutex.h"
 #include<string.h>
+#include<iostream>
 
 #define ADD_TO_EPOLL()                                                                      \
 auto it = m_listen_fds.find(event->getFd());                                                \
@@ -16,6 +17,7 @@ if(it != m_listen_fds.end())                                                    
     op = EPOLL_CTL_MOD;                                                                     \
 }                                                                                           \
 epoll_event tmp = event->getEpollEvent();                                                   \
+INFOLOG("epoll_event.events = %d",(int)tmp.events)                                          \
 int rt = epoll_ctl(m_epoll_fd,op,event->getFd(),&tmp);                                      \
 if(rt == -1)                                                                                \
 {                                                                                           \
@@ -43,13 +45,15 @@ namespace rocket{
     static int g_epoll_max_timeout = 10000;
     static int g_epoll_max_events = 10;
 
-    EventLoop::EventLoop()
+    EventLoop::EventLoop() // 创建epoll实例，并且注册监听事件
     {
+        
         if(t_current_eventloop!=NULL)
         {
             ERRORLOG("failed to create event loop ,this thread has created event loop");
             exit(0);
         }
+
         m_thread_id = getThreadId();
         m_epoll_fd = epoll_create(10);
         if(m_epoll_fd == -1 ) 
@@ -57,20 +61,12 @@ namespace rocket{
             ERRORLOG("failed to create event loop ,epoll_create error,error info[%d]",errno);
             exit(0);
         }
-       
-        addEpollEvent(m_wakeup_fd_event);
-        epoll_event event;
-        event.events = EPOLLIN;
-        int rt = epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD,m_wakeup_fd,&event);
-        if(rt == -1)
-        {
-            ERRORLOG("failed to create event loop ,epoll_ctl eventfd error,error info[%d]",errno);
-            exit(0);
 
-        }
+        initWakeUpFdEvent();
+
         INFOLOG("succ create event loop in thread %d",m_thread_id);
         t_current_eventloop = this;
-        initWakeUpFdEvent();
+
         
     }
 
@@ -82,24 +78,27 @@ namespace rocket{
             m_wakeup_fd_event = NULL;
         }
     }
-    void EventLoop::initWakeUpFdEvent()
+    void EventLoop::initWakeUpFdEvent()  //初始化 事件文件符以及对应的回调函数
     {
-         m_wakeup_fd = eventfd(0,EFD_NONBLOCK);
+        m_wakeup_fd = eventfd(0,EFD_NONBLOCK); //创建一个事件文件描述符
         if (m_wakeup_fd<0)
         {
             ERRORLOG("failed to create event loop, epoll_create error info[%d]",errno);
             exit(0);
         }
         m_wakeup_fd_event = new WakeUpFdEvent(m_wakeup_fd);
- 
+
         m_wakeup_fd_event->listen(FdEvent::IN_EVENT,[this](){
             char buf[8];
-            while(read(m_wakeup_fd,buf,8)!=-1&& errno != EAGAIN)
+            std::cout<<"sss"<<std::endl;  
+            while(read(m_wakeup_fd,buf,8)!=-1&& errno != EAGAIN) //读事件的回调函数实现
             {
                 
             }
             DEBUGLOG("read full bytes fromm wakeup fd[%d]",m_wakeup_fd);
     });
+
+    addEpollEvent(m_wakeup_fd_event);
     }
 
     void EventLoop::loop()
@@ -107,17 +106,23 @@ namespace rocket{
         while(!m_stop_flag)
         {
             ScopeMutex<Mutex> lock(m_mutex);
-            std::queue<std::function<void()>> tmp_tasks = m_pending_tasks;
+            std::queue<std::function<void()>> tmp_tasks;
             m_pending_tasks.swap(tmp_tasks);
             lock.unlock();
             while(!tmp_tasks.empty())
             {
-                tmp_tasks.front()();
+               std::function<void()> cb =  tmp_tasks.front();
                 tmp_tasks.pop();
+                if(cb)
+                {
+                    cb();
+                }
             }
             int timeout = g_epoll_max_timeout;
             epoll_event result_events[g_epoll_max_events];
-            int rt = epoll_wait(m_epoll_fd,result_events,g_epoll_max_events,timeout);
+            // DEBUGLOG("now begin to epoll wait");
+            int rt = epoll_wait(m_epoll_fd,result_events,g_epoll_max_events,timeout);//监听所有fd事件
+            DEBUGLOG("now end epoll wait, rt = %d",rt);
             if(rt<0) {
                 ERRORLOG("epoll_wait error,errno=",errno);
             }else{
@@ -126,11 +131,12 @@ namespace rocket{
                     epoll_event trrigger_event = result_events[i];
                     FdEvent* fd_event = static_cast<FdEvent* > (trrigger_event.data.ptr);
                     if(fd_event == NULL) continue;
-                    if(trrigger_event.events || EPOLLIN )
+                    if(trrigger_event.events & EPOLLIN )
                     {
+                        DEBUGLOG("fd %d trigger in event",fd_event->getFd());
                         addTask(fd_event->handler(FdEvent::IN_EVENT));
                     }
-                     if(trrigger_event.events || EPOLLOUT )
+                     if(trrigger_event.events & EPOLLOUT )
                     {
                         addTask(fd_event->handler(FdEvent::OUT_EVENT));
                     }
@@ -141,7 +147,8 @@ namespace rocket{
 
     void EventLoop::wakeup()
     {
-
+        INFOLOG("WAKE UP");
+        m_wakeup_fd_event->wakeup();
     }
     void EventLoop::dealWakeup()
     {
@@ -153,8 +160,9 @@ namespace rocket{
         m_stop_flag = true;
     }
 
-    void EventLoop::addEpollEvent(FdEvent* event){
-        if(isInLoopThread)
+    void EventLoop::addEpollEvent(FdEvent* event){ 
+        // TODO
+        if(isInLoopThread())
         {
             ADD_TO_EPOLL();
         }else{
@@ -162,7 +170,7 @@ namespace rocket{
             {
                 ADD_TO_EPOLL();
             };
-            addTask(cb,true  );
+            addTask(cb,true);
         }
 
     }
