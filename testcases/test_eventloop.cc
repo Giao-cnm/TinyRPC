@@ -4,10 +4,13 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>
 #include<string.h>
+#include<memory>
+#include<unistd.h>
 #include"rocket/common/log.h"
 #include"rocket/common/config.h"
 #include"rocket/net/fd_event.h"
 #include"rocket/net/eventloop.h"
+#include"rocket/net/timer.h"
 int main()
 {
    
@@ -52,6 +55,13 @@ int main()
         DEBUGLOG("success get client fd[%d],perr_addr: [%s %d]",clientfd,inet_ntoa(peer_addr.sin_addr),ntohs(peer_addr.sin_port)); 
     });
     evnetloop->addEpollEvent(&event);
+    int i = 0;
+
+    rocket::TimerEvent::s_ptr timer_event = std::make_shared<rocket::TimerEvent> (1000,true,[&i]()
+    {
+        INFOLOG("trigger timer event,count = %d",i++);
+    });
+    evnetloop->addTimerEvent(timer_event);
     evnetloop->loop();
     return 0;
 }

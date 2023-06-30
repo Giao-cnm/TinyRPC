@@ -3,14 +3,20 @@
 #include<iostream>
 #include<string.h>
 namespace rocket{
+    FdEvent::FdEvent()
+    {
+        memset(&m_listen_events,0,sizeof(m_listen_events));
+    }
     FdEvent::FdEvent(int fd):m_fd(fd)
     {
         memset(&m_listen_events,0,sizeof(m_listen_events));
     }
+
     FdEvent::~FdEvent()
     {
 
     }
+
     /*
     这段代码实现了根据传入的事件类型，返回对应的事件回调函数。当需要处理输入事件时，返回之前保存的输入事件回调函数
     */
