@@ -23,7 +23,9 @@ if(rt == -1)                                                                    
 {                                                                                           \
     ERRORLOG("fai\led epoll_ctl when add fd , errno = %d,error =%s",errno,strerror(errno)); \
 }                                                                                           \
-DEBUGLOG("add event success, fd[%d]",event->getFd())\
+DEBUGLOG("add event success, fd[%d]",event->getFd())                                        \
+
+
 
 #define DELETE_TO_EPOLL()                                                                   \
  auto it = m_listen_fds.find(event->getFd());                                               \
@@ -92,14 +94,13 @@ namespace rocket{
             ERRORLOG("failed to create event loop, epoll_create error info[%d]",errno);
             exit(0);
         }
+        INFOLOG("wakeup fd = %d", m_wakeup_fd);
         m_wakeup_fd_event = new WakeUpFdEvent(m_wakeup_fd);
 
         m_wakeup_fd_event->listen(FdEvent::IN_EVENT,[this](){
             char buf[8];
-            std::cout<<"sss"<<std::endl;  
-            while(read(m_wakeup_fd,buf,8)!=-1&& errno != EAGAIN) //读事件的回调函数实现
-            {
-                
+       
+            while(read(m_wakeup_fd,buf,8)!=-1&& errno != EAGAIN) {      
             }
             DEBUGLOG("read full bytes fromm wakeup fd[%d]",m_wakeup_fd);
     });
@@ -109,6 +110,7 @@ namespace rocket{
 
     void EventLoop::loop()
     {
+        
         while(!m_stop_flag)
         {
             ScopeMutex<Mutex> lock(m_mutex);
